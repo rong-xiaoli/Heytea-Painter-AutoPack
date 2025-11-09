@@ -43,7 +43,7 @@ FONT_FAMILY = "Microsoft YaHei UI"
 class ModernDrawingApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Heytea Painter - AI绘画工具")
+        self.root.title("Heytea Painter")
         self.root.geometry("1600x950")
         
         self.file_path = None
@@ -144,10 +144,10 @@ class ModernDrawingApp:
         ctk.CTkLabel(extract_frame, text="线条提取方法", font=(FONT_FAMILY, 14, "bold")).pack(pady=10)
         
         self.extraction_method = ctk.CTkSegmentedButton(extract_frame, 
-            values=["铅笔素描", "边缘检测", "动漫线稿"],
+            values=["Pencil Sketch", "Canny", "Anime2Sketch"],
             command=self.on_method_change,
             font=(FONT_FAMILY, 11))
-        self.extraction_method.set("铅笔素描")
+        self.extraction_method.set("Pencil Sketch")
         self.extraction_method.pack(fill="x", padx=20, pady=5)
         
         # 动态参数区
@@ -341,11 +341,11 @@ class ModernDrawingApp:
             widget.pack_forget()
         
         method = self.extraction_method.get()
-        if method == "铅笔素描":
+        if method == "Pencil Sketch":
             self.pencil_params.pack(fill="x")
-        elif method == "边缘检测":
+        elif method == "Canny":
             self.canny_params.pack(fill="x")
-        elif method == "动漫线稿":
+        elif method == "Anime2Sketch":
             self.anime_params.pack(fill="x")
         
         if value is not None:
@@ -387,12 +387,12 @@ class ModernDrawingApp:
         thick = self.preview_thick.get()
         
         try:
-            if method == "铅笔素描":
+            if method == "Pencil Sketch":
                 preview_img, contours, img_w, img_h = process_image_pencil(
                     self.file_path, self.sigma_s.get(), self.sigma_r.get(), 
                     self.shade_factor.get(), simplify, spline, thick)
             
-            elif method == "边缘检测":
+            elif method == "Canny":
                 blur = int(self.canny_blur.get())
                 if blur % 2 == 0:
                     blur += 1
@@ -400,7 +400,7 @@ class ModernDrawingApp:
                     self.file_path, blur, self.canny_low.get(), 
                     self.canny_high.get(), simplify, spline, thick)
             
-            elif method == "动漫线稿":
+            elif method == "Anime2Sketch":
                 mode_map = {"外部轮廓": "外部轮廓 (快速)", "所有轮廓": "所有轮廓 (详细)", "骨架提取": "骨架提取 (推荐)"}
                 preview_img, contours, img_w, img_h = process_image_anime2sketch(
                     self.file_path, simplify, spline, thick,
@@ -566,7 +566,7 @@ class ModernDrawingApp:
         """获取所有参数值"""
         mode_map = {"外部轮廓": "外部轮廓 (快速)", "所有轮廓": "所有轮廓 (详细)", "骨架提取": "骨架提取 (推荐)"}
         method_map = {"短行程": "方法 1: 短行程 (推荐)", "智能拖动": "方法 2: 智能拖动 (蜘蛛网?)", "仿真人": "方法 3: 仿真人绘画 🎨"}
-        extract_map = {"铅笔素描": "Pencil Sketch (V19)", "边缘检测": "Canny 边缘检测", "动漫线稿": "Anime2Sketch"}
+        extract_map = {"Pencil Sketch": "Pencil Sketch (V19)", "Canny": "Canny 边缘检测", "Anime2Sketch": "Anime2Sketch"}
         
         return {
             "extraction_method": extract_map[self.extraction_method.get()],
@@ -604,11 +604,11 @@ class ModernDrawingApp:
     
     def set_all_values(self, values):
         """设置所有参数值"""
-        extract_map = {"Pencil Sketch (V19)": "铅笔素描", "Canny 边缘检测": "边缘检测", "Anime2Sketch": "动漫线稿"}
+        extract_map = {"Pencil Sketch (V19)": "Pencil Sketch", "Canny 边缘检测": "Canny", "Anime2Sketch": "Anime2Sketch"}
         method_map = {"方法 1: 短行程 (推荐)": "短行程", "方法 2: 智能拖动 (蜘蛛网?)": "智能拖动", "方法 3: 仿真人绘画 🎨": "仿真人"}
         mode_map = {"外部轮廓 (快速)": "外部轮廓", "所有轮廓 (详细)": "所有轮廓", "骨架提取 (推荐)": "骨架提取"}
         
-        self.extraction_method.set(extract_map.get(values.get("extraction_method", "Pencil Sketch (V19)"), "铅笔素描"))
+        self.extraction_method.set(extract_map.get(values.get("extraction_method", "Pencil Sketch (V19)"), "Pencil Sketch"))
         self.sigma_s.set(values.get("sigma_s", 60))
         self.sigma_r.set(values.get("sigma_r", 0.4))
         self.shade_factor.set(values.get("shade_factor", 0.05))
