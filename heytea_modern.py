@@ -305,35 +305,8 @@ class ModernDrawingApp:
     
     def create_tooltip(self, widget, text):
         """创建鼠标悬停提示"""
-        tooltip_window = None
-        
-        def show_tooltip(event):
-            nonlocal tooltip_window
-            if tooltip_window:
-                return
-            
-            x = widget.winfo_rootx() + 20
-            y = widget.winfo_rooty() + 30
-            
-            tooltip_window = ctk.CTkToplevel(widget)
-            tooltip_window.wm_overrideredirect(True)
-            tooltip_window.wm_geometry(f"+{x}+{y}")
-            
-            label = ctk.CTkLabel(tooltip_window, text=text, 
-                                font=(FONT_FAMILY, 10),
-                                fg_color="#2b2b2b",
-                                corner_radius=5,
-                                padx=10, pady=5)
-            label.pack()
-        
-        def hide_tooltip(event):
-            nonlocal tooltip_window
-            if tooltip_window:
-                tooltip_window.destroy()
-                tooltip_window = None
-        
-        widget.bind("<Enter>", show_tooltip)
-        widget.bind("<Leave>", hide_tooltip)
+        # 禁用 tooltip 功能以避免卡住的 BUG
+        pass
     
     def on_method_change(self, value=None):
         """切换提取方法"""
@@ -353,14 +326,30 @@ class ModernDrawingApp:
     
     def load_image(self):
         """加载图片"""
+        # 设置默认目录为项目的 images 文件夹（如果存在），否则使用用户的文档目录
+        default_dir = os.path.join(os.path.dirname(__file__), "images")
+        if not os.path.exists(default_dir):
+            # 如果项目 images 文件夹不存在，使用用户主目录
+            default_dir = os.path.expanduser("~")
+        
         file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.path.dirname(__file__), "images"),
-            title="选择图片",
-            filetypes=(("图片文件", "*.jpg *.jpeg *.png *.bmp"), ("所有文件", "*.*"))
+            initialdir=default_dir,
+            title="选择图片（支持任意位置）",
+            filetypes=(
+                ("图片文件", "*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp"),
+                ("JPEG", "*.jpg *.jpeg"),
+                ("PNG", "*.png"),
+                ("所有文件", "*.*")
+            )
         )
         if file_path:
             self.file_path = file_path
-            self.log(f"已加载图片: {os.path.basename(file_path)}")
+            # 显示完整路径，方便用户确认
+            if len(file_path) > 60:
+                display_path = "..." + file_path[-57:]
+            else:
+                display_path = file_path
+            self.log(f"已加载图片: {display_path}")
             self.update_preview()
             self.start_btn.configure(state="normal")
     

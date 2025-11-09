@@ -139,11 +139,40 @@ def get_anime2sketch_model():
 
 # --- 图像处理函数 ---
 
+def load_image_with_unicode(file_path):
+    """
+    支持 Unicode 路径的图片加载（包括中文、特殊字符等）
+    cv2.imread 对非 ASCII 路径支持不好，使用 numpy 和 cv2.imdecode 解决
+    """
+    try:
+        # 使用 numpy 读取文件字节，然后用 cv2 解码
+        with open(file_path, 'rb') as f:
+            file_bytes = np.frombuffer(f.read(), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            print(f"错误: 无法解码图像文件: {file_path}")
+            print(f"  请确认文件是有效的图片格式（jpg, png, bmp 等）")
+            return None
+        
+        return image
+    except FileNotFoundError:
+        print(f"错误: 文件不存在: {file_path}")
+        return None
+    except PermissionError:
+        print(f"错误: 没有读取权限: {file_path}")
+        return None
+    except Exception as e:
+        print(f"错误: 加载图像失败: {file_path}")
+        print(f"  异常信息: {e}")
+        return None
+
+
 def process_image_pencil(file_path, sigma_s, sigma_r, shade_factor, 
                          simplify_eps, spline_smoothness, preview_thickness):
     """Pencil Sketch 线条提取"""
     try:
-        image_rgb = cv2.imread(file_path)
+        image_rgb = load_image_with_unicode(file_path)
         if image_rgb is None:
             print("错误: 无法加载图像")
             return None, None, 0, 0
@@ -181,7 +210,7 @@ def process_image_canny(file_path, blur_kernel, low_thresh, high_thresh,
                         simplify_eps, spline_smoothness, preview_thickness):
     """Canny 边缘检测"""
     try:
-        image_rgb = cv2.imread(file_path)
+        image_rgb = load_image_with_unicode(file_path)
         if image_rgb is None:
             print("错误: 无法加载图像")
             return None, None, 0, 0
@@ -222,7 +251,7 @@ def process_image_anime2sketch(file_path, simplify_eps, spline_smoothness, previ
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             return error_img, [], 500, 300
         
-        image_rgb = cv2.imread(file_path)
+        image_rgb = load_image_with_unicode(file_path)
         if image_rgb is None:
             print("错误: 无法加载图像")
             return None, None, 0, 0
