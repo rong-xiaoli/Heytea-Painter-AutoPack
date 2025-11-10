@@ -4,7 +4,7 @@ Automatically add drawing elements by extracting edges.
 https://pan.quark.cn/s/6ae181319749  
 一键启动包v1：  
 https://pan.quark.cn/s/b90824f581b1  
-# 使用方法：。
+# 使用方法：
   ****
 建议在系统DPI缩放100%的情况下使用，高DPI缩放会导致程序绘画区域不能完全覆盖画布  
   ****
