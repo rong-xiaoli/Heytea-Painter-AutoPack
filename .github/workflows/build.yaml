@@ -29,7 +29,7 @@ jobs:
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v5
         with:
-          name: heytea_app_build.zip
+          name: heytea_app_build
           path: |
             dist/*
       # Release Step (Commented Out), set up your TOKEN secret and uncomment to enable
