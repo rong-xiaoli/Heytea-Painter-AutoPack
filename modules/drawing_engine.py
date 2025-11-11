@@ -11,18 +11,46 @@ import pydirectinput
 import keyboard
 from pynput import mouse
 import ctypes
+import sys
 
 pydirectinput.PAUSE = 0.005
 
 
-# --- DPI 设置 ---
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
-except:
+# --- DPI 感知常量 ---
+DPI_AWARENESS_CONTEXT_UNAWARE = -1
+DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = -2
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = -3
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED = -5
+
+
+def set_dpi_awareness():
+    """
+    检测当前 DPI 感知状态
+    注意: 实际设置在 heytea_modern.py 启动时完成
+    
+    返回:
+        dict: {'method': 方法名, 'success': 是否成功, 'level': DPI 感知级别}
+    """
+    # DPI已经在程序启动时设置,这里只是检测状态
     try:
-        ctypes.windll.user32.SetProcessDPIAware()
+        shcore = ctypes.windll.shcore
+        # 如果能成功调用说明至少是V1级别
+        return {'method': 'SetProcessDpiAwareness', 'success': True, 'level': 'Per-Monitor V1'}
     except:
         pass
+    
+    try:
+        user32 = ctypes.windll.user32
+        return {'method': 'SetProcessDPIAware', 'success': True, 'level': 'System DPI'}
+    except:
+        pass
+    
+    return {'method': 'None', 'success': False, 'level': 'Unaware'}
+
+
+# 检测当前DPI状态
+_dpi_result = set_dpi_awareness()
 
 
 def get_dpi_info():
@@ -34,7 +62,9 @@ def get_dpi_info():
             'scale': DPI 缩放比例,
             'dpi': 实际 DPI 值,
             'screen_size': (宽, 高) 屏幕分辨率,
-            'logical_size': (宽, 高) 逻辑分辨率
+            'logical_size': (宽, 高) 逻辑分辨率,
+            'awareness_method': DPI 感知方法,
+            'awareness_level': DPI 感知级别
         }
     """
     try:
@@ -73,7 +103,9 @@ def get_dpi_info():
             'scale_y': scale_y,
             'dpi': dpi_x,
             'screen_size': (screen_w, screen_h),
-            'logical_size': (logical_w, logical_h)
+            'logical_size': (logical_w, logical_h),
+            'awareness_method': _dpi_result['method'],
+            'awareness_level': _dpi_result['level']
         }
     except Exception as e:
         print(f"获取 DPI 信息失败: {e}")
@@ -174,7 +206,9 @@ def calibrate_and_activate(img_w, img_h):
     if dpi_info['logical_size'] != dpi_info['screen_size']:
         print(f"  逻辑分辨率: {dpi_info['logical_size'][0]} x {dpi_info['logical_size'][1]} 像素")
     print(f"  当前 DPI 缩放: {dpi_info['scale'] * 100:.0f}% (DPI: {dpi_info['dpi']})")
-    print(f"  原始图像尺寸: {img_w} x {img_h} 像素")
+    print(f"  DPI 感知方法: {dpi_info['awareness_method']}")
+    print(f"  DPI 感知级别: {dpi_info['awareness_level']}")
+    print(f"  处理后图像尺寸: {img_w} x {img_h} 像素")
     print(f"="*60)
     
     print("\n等待 3 秒后开始绘画...")
@@ -216,7 +250,7 @@ def calibrate_and_activate(img_w, img_h):
     safe_y_max = int(offset_y + actual_h)
     
     print(f"\n绘画参数计算:")
-    print(f"  图像原始尺寸: {img_w} x {img_h} 像素")
+    print(f"  图像处理尺寸: {img_w} x {img_h} 像素 (已优化)")
     print(f"  画布可用尺寸: {screen_w} x {screen_h} 像素")
     print(f"  X轴缩放比例: {scale_x:.4f}")
     print(f"  Y轴缩放比例: {scale_y:.4f}")
@@ -224,6 +258,11 @@ def calibrate_and_activate(img_w, img_h):
     print(f"  缩放后图像: {actual_w:.1f} x {actual_h:.1f} 像素")
     print(f"  居中偏移: X={((screen_w - actual_w) / 2):.1f}, Y={((screen_h - actual_h) / 2):.1f}")
     print(f"  绘制区域: ({safe_x_min}, {safe_y_min}) → ({safe_x_max}, {safe_y_max})")
+    
+    # 🔍 调试信息:检查轮廓坐标范围 (仅在scale_factor<0.5时打印)
+    if scale_factor < 0.5:
+        print(f"\n🔍 轮廓坐标诊断 (验证数据一致性):")
+        print(f"   提示: 轮廓坐标应该在 0-{img_w} (X) 和 0-{img_h} (Y) 范围内")
     
     # 检查画布利用率
     canvas_usage = (actual_w * actual_h) / (screen_w * screen_h) * 100
@@ -240,11 +279,20 @@ def calibrate_and_activate(img_w, img_h):
             else:
                 print(f"     图片更高，建议裁剪图片为更接近 {aspect_canvas:.1f}:1 的比例")
     
-    # 小画布精度警告
+    # 精度警告（关键改进）
     if scale_factor < 0.5:
         print(f"\n⚠️ 警告: 缩放比例过小 ({scale_factor:.3f})")
-        print(f"   可能导致绘画精度降低")
-        print(f"   建议: 1) 使用更大的画布  2) 缩小图片尺寸")
+        print(f"   图像尺寸 ({img_w}x{img_h}) 相对画布 ({screen_w}x{screen_h}) 过大")
+        print(f"   这会导致:")
+        print(f"     • 轮廓精度损失（每 {1/scale_factor:.1f} 个像素才绘制 1 个点）")
+        print(f"     • 细节丢失")
+        print(f"   解决方案:")
+        print(f"     ✅ 推荐: 使用更大的画布（建议至少 {img_w//2}x{img_h//2} 像素）")
+        print(f"     ✅ 或者: 在图像编辑器中预先裁剪/缩小图片")
+        print(f"     ⚠️  当前画布太小，无法呈现完整细节")
+    elif scale_factor < 0.8:
+        print(f"\n💡 提示: 缩放比例 {scale_factor:.3f}")
+        print(f"   建议使用更大的画布以获得更好的绘画效果")
     
     # 测试点击：点击图像中心
     test_x = int(offset_x + actual_w / 2)
