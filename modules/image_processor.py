@@ -6,6 +6,7 @@
 import cv2
 import numpy as np
 from scipy.interpolate import splprep, splev
+from modules.smart_resize import adaptive_resize, calculate_optimal_size
 
 try:
     import torch
@@ -173,15 +174,16 @@ def get_anime2sketch_model():
 
 # --- 图像处理函数 ---
 
-def load_image_with_unicode(file_path):
+def load_image_with_unicode(file_path, target_size=None):
     """
     支持 Unicode 路径的图片加载并自动调整到合理尺寸
     
     参数:
         file_path: 图片路径（支持中文）
+        target_size: 目标尺寸（可选），如果提供则优先使用
     
     返回:
-        image: BGR 图像数组，尺寸在 512-2048 像素范围内
+        image: BGR 图像数组
     """
     try:
         # 使用 numpy 读取文件字节，然后用 cv2 解码
@@ -198,32 +200,48 @@ def load_image_with_unicode(file_path):
         h, w = image.shape[:2]
         original_size = f"{w}x{h}"
         
-        # 设置尺寸上限（防止内存溢出，但不做预缩放）
-        MAX_SIZE = 4096  # 提高上限，让画布校准时再决定缩放
-        MIN_SIZE = 256   # 降低下限，避免过度放大
+        # 智能缩放策略：使用高质量算法防止精度损失
+        MAX_SIZE = 2048       # 绝对上限（防止内存问题）
+        MIN_SIZE = 256        # 绝对下限
+        DEFAULT_TARGET = 1024 # 默认目标尺寸
+        
+        # 如果没有指定目标尺寸，使用默认策略
+        if target_size is None:
+            target_size = DEFAULT_TARGET
         
         max_dim = max(h, w)
         
-        # 只处理极端情况
+        # 智能缩放逻辑（使用高质量算法）
         if max_dim > MAX_SIZE:
-            # 图片极大：缩小到 MAX_SIZE（防止内存问题）
+            # 超大图片：使用智能下采样
             scale = MAX_SIZE / max_dim
             new_w = int(w * scale)
             new_h = int(h * scale)
-            image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"图片过大，已预缩小: {original_size} → {new_w}x{new_h}")
-            print(f"  (将在绘画时根据画布大小进一步调整)")
-        
+            print(f"🔧 图片过大 ({original_size})，使用智能算法缩小...")
+            image = adaptive_resize(image, new_w, new_h, preserve_detail=True)
+            print(f"   ✓ 已优化到 {new_w}x{new_h} (保留细节)")
+            
+        elif max_dim > target_size * 1.5:
+            # 图片较大：使用智能下采样
+            scale = target_size / max_dim
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            print(f"🔧 图片较大 ({original_size})，使用智能算法优化...")
+            image = adaptive_resize(image, new_w, new_h, preserve_detail=True)
+            print(f"   ✓ 已优化到 {new_w}x{new_h} (防止精度损失)")
+            
         elif max_dim < MIN_SIZE:
-            # 图片极小：放大到 MIN_SIZE
+            # 图片太小：使用智能上采样
             scale = MIN_SIZE / max_dim
             new_w = int(w * scale)
             new_h = int(h * scale)
-            image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-            print(f"图片过小，已预放大: {original_size} → {new_w}x{new_h}")
+            print(f"🔧 图片过小 ({original_size})，使用智能算法放大...")
+            image = adaptive_resize(image, new_w, new_h, preserve_detail=True)
+            print(f"   ✓ 已放大到 {new_w}x{new_h} (边缘保留)")
         
         else:
-            print(f"图片尺寸: {original_size} (将根据画布大小自动调整)")
+            # 尺寸合理：保持原样
+            print(f"✅ 图片尺寸合适: {original_size}")
         
         return image
     except FileNotFoundError:
@@ -335,11 +353,15 @@ def process_image_anime2sketch(file_path, simplify_eps, spline_smoothness, previ
         
         # 预处理图像
         h, w = image_rgb.shape[:2]
+        original_h, original_w = h, w  # 保存原始尺寸
         target_h = ((h - 1) // 256 + 1) * 256
         target_w = ((w - 1) // 256 + 1) * 256
         
         max_size = 1024
+        need_restore_size = False  # 🔧 标志:是否需要恢复原始尺寸
+        
         if target_h > max_size or target_w > max_size:
+            need_restore_size = True  # 标记需要恢复
             scale = min(max_size / target_h, max_size / target_w)
             new_h = int(h * scale)
             new_w = int(w * scale)
@@ -371,10 +393,13 @@ def process_image_anime2sketch(file_path, simplify_eps, spline_smoothness, previ
         edge_map = edge.squeeze().cpu().numpy()
         edge_map = edge_map[:image_resized.shape[0], :image_resized.shape[1]]
         
-        if target_h > max_size or target_w > max_size:
-            edge_map = cv2.resize(edge_map, (w, h))
-        
+        # 🔧 关键修复: 先转换到8位再放大(避免轮廓坐标错位)
         edge_map = (edge_map * 255.0).astype(np.uint8)
+        
+        # 🔧 使用标志变量判断是否需要恢复尺寸
+        if need_restore_size:
+            print(f"  [缩放恢复] {image_resized.shape[1]}x{image_resized.shape[0]} → {original_w}x{original_h}")
+            edge_map = cv2.resize(edge_map, (original_w, original_h), interpolation=cv2.INTER_LINEAR)
         
         # 预处理模糊
         if pre_blur > 0:
@@ -439,6 +464,21 @@ def process_image_anime2sketch(file_path, simplify_eps, spline_smoothness, previ
         
         total_points = sum(len(c) for c in final_contours)
         print(f"(Anime2Sketch) {len(final_contours)} 条路径, {total_points} 个点")
+        
+        # 🔍 调试:检查轮廓坐标范围
+        if len(final_contours) > 0:
+            all_points = np.vstack([c.reshape(-1, 2) for c in final_contours])
+            min_x, min_y = np.min(all_points, axis=0)
+            max_x, max_y = np.max(all_points, axis=0)
+            print(f"  [坐标范围] X: {min_x:.0f}~{max_x:.0f} (应为 0~{image_rgb.shape[1]})")
+            print(f"             Y: {min_y:.0f}~{max_y:.0f} (应为 0~{image_rgb.shape[0]})")
+            
+            # 检查是否只占一小部分
+            x_coverage = (max_x - min_x) / image_rgb.shape[1] * 100
+            y_coverage = (max_y - min_y) / image_rgb.shape[0] * 100
+            if x_coverage < 50 or y_coverage < 50:
+                print(f"  ⚠️ 警告: 轮廓只覆盖图像的 {x_coverage:.1f}% (X) × {y_coverage:.1f}% (Y)")
+                print(f"           这可能是边缘检测参数问题或图片内容集中在局部")
         
         return preview_canvas, final_contours, image_rgb.shape[1], image_rgb.shape[0]
     
